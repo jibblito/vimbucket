@@ -27,6 +27,7 @@ int cur_lines = 0;
 WINDOW *text_window,*file_window,*status_window,*numbers_window;
 char** file;
 char* output_filename;
+  short black_white=1, white_clear=2, yellow_clear=3, blue_clear=4; //colors
 
 void init_file()
 {
@@ -83,12 +84,19 @@ void write_buffer_to_output()
 
 void draw_numbers()
 {
+  wattron(numbers_window,COLOR_PAIR(yellow_clear));
   char number[4];
   for (i = 0; i <= cur_lines; i++)
   {
     sprintf(number,"%d",i);
     wmove(numbers_window,i,0);
     waddstr(numbers_window,number);
+  }
+  wattron(numbers_window,COLOR_PAIR(blue_clear));
+  for (; i <= LINES-3; i++)
+  {
+    wmove(numbers_window,i,0);
+    waddstr(numbers_window,"~");
   }
   wmove(text_window,cur_y,cur_x);
   wrefresh(numbers_window);
@@ -130,14 +138,15 @@ int main(int argc, char **argv)
   size_t len = COLS;
   int lines_expand_threshold = 0.9 * (float) MAX_LINES_DEFAULT;
 
-  short black_white=1, white_black=2;
   initscr();
 
   if (has_colors()) {
     start_color();
     use_default_colors();
     init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
-    init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
+    init_pair(white_clear, COLOR_WHITE, -1);
+    init_pair(yellow_clear, COLOR_YELLOW, -1);
+    init_pair(blue_clear, COLOR_BLUE, -1);
   }
 
   init_file();
@@ -163,7 +172,6 @@ int main(int argc, char **argv)
   status_window = newwin(1,COLS,LINES-1,0);
   numbers_window = newwin(LINES-2,4,0,0);
   wattrset(file_window,COLOR_PAIR(black_white));
-  wrefresh(file_window);
 
   register_signal_handler();
   cbreak();
