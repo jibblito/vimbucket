@@ -1,10 +1,11 @@
 all: server client
 
-server: server.c
-	gcc server.c -g -lncurses -o server
+server: server.c vimline.c
+	gcc server.c vimline.c -g -lncurses -o server
 
-client: client.c
-	gcc client.c -g -lncurses -o client
+client: client.c vimline.c
+	gcc client.c vimline.c -g -lncurses -o client
+
 
 clean:
 	rm -f server client log.txt

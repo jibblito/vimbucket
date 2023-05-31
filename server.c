@@ -11,12 +11,12 @@
 #include <curses.h>
 #include <fcntl.h>
 #include <signal.h>
+#include "vimline.h"
 
 #define TRUE 1
 #define FALSE 0
 #define PORT 25565
 #define MAX_LINES_DEFAULT 1000
-#define MAX_COLS_DEFAULT 200
 
 int server_running = 1;
 int master_socket, logfile;
@@ -25,16 +25,16 @@ char output_buffer[64]; // for output messages
 int cur_y,cur_x, i;
 int cur_lines = 0;
 WINDOW *text_window,*file_window,*status_window,*numbers_window;
-char** file;
+struct VimLine** file;
 char* output_filename;
-  short black_white=1, white_clear=2, yellow_clear=3, blue_clear=4; //colors
+short black_white=1, white_clear=2, yellow_clear=3, blue_clear=4; //colors
 
 void init_file()
 {
-  file = malloc(sizeof(char*) * MAX_LINES_DEFAULT);
+  file = malloc(sizeof(struct VimLine) * MAX_LINES_DEFAULT);
   for (i = 0; i < MAX_LINES_DEFAULT; i++)
   {
-    file[i] = malloc(sizeof(char)*MAX_COLS_DEFAULT);
+    file[i] = newVimLine("");
   }
 }
 
@@ -44,7 +44,7 @@ void write_file()
   rewind(outputfile);
   for (i = 0; i < LINES; i++)
   {
-    fprintf(outputfile,file[i]);
+    fprintf(outputfile,getVimLine(file[i]));
     dprintf(logfile,"Writing line %d to outputfile!\n",i);
     free(file[i]);
   }
@@ -156,14 +156,14 @@ int main(int argc, char **argv)
     i = -1;
     while (getline(&line,&len,outputfile) != -1) // load file into buffer
     {
-      sprintf(file[++i],line);
+      setVimLine(file[++i],line);
     }
     cur_lines = i;
-    sprintf(file[i+1],"\0"); // signify end of file
+    setVimLine(file[i+1],"\0"); // signify end of file
   } else {
     // file doesn't exist, create it
     outputfile = fopen(output_filename, "w+");
-    sprintf(file[0],"New file. Edit it!");
+    setVimLine(file[0],"New file. Edit it!");
   }
   logfile = open("log.txt", O_CREAT | O_TRUNC | O_RDWR, S_IWUSR | S_IRUSR);
 
@@ -178,7 +178,7 @@ int main(int argc, char **argv)
   scrollok(stdscr,true);
   for (i = 0; i < LINES-2; i++)
   {
-    mvwaddstr(text_window,i,0,file[i]);
+    mvwaddstr(text_window,i,0,getVimLine(file[i]));
   }
   draw_numbers();
   draw_filename(output_filename);
@@ -390,7 +390,7 @@ int main(int argc, char **argv)
               } else {
                 waddch(text_window,input);
                 getyx(text_window,cur_y,cur_x);
-                file[cur_y][cur_x-1] = input;
+                addChar(file[cur_y],cur_x-1,input);
                 sprintf(output_buffer,"Char written: %d!", input);
                 write_buffer_to_output();
               }
