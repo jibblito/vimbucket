@@ -11,27 +11,29 @@
 #include <curses.h>
 #include <fcntl.h>
 #include <signal.h>
+
 #define TRUE 1
 #define FALSE 0
 #define PORT 25565
+#define MAX_LINES_DEFAULT 1000
+#define MAX_COLS_DEFAULT 200
 
 int server_running = 1;
 int master_socket, logfile;
 FILE *outputfile;
 char output_buffer[64]; // for output messages
 int cur_y,cur_x, i;
-WINDOW *text_window;
-WINDOW *file_window;
-WINDOW *status_window;
+int cur_lines = 0;
+WINDOW *text_window,*file_window,*status_window,*numbers_window;
 char** file;
 char* output_filename;
 
 void init_file()
 {
-  file = malloc(sizeof(char*) * LINES-2);
-  for (i = 0; i < LINES; i++)
+  file = malloc(sizeof(char*) * MAX_LINES_DEFAULT);
+  for (i = 0; i < MAX_LINES_DEFAULT; i++)
   {
-    file[i] = malloc(sizeof(char)*COLS);
+    file[i] = malloc(sizeof(char)*MAX_COLS_DEFAULT);
   }
 }
 
@@ -58,7 +60,6 @@ void sig_handler(int signo)
     write_file();
     fprintf(stdout,"Server terminated by SIGINT\n");
     dprintf(logfile,"Server terminated by SIGINT\n");
-    scr_dump("./screen.txt");
     close(logfile);
     exit(0);
 }
@@ -80,6 +81,37 @@ void write_buffer_to_output()
   wrefresh(text_window);
 }
 
+void draw_numbers()
+{
+  char number[4];
+  for (i = 0; i <= cur_lines; i++)
+  {
+    sprintf(number,"%d",i);
+    wmove(numbers_window,i,0);
+    waddstr(numbers_window,number);
+  }
+  wmove(text_window,cur_y,cur_x);
+  wrefresh(numbers_window);
+  wrefresh(text_window);
+}
+
+void draw_filename(char* filename)
+{
+  char curloc_s[20], curpercent_s[4];
+  sprintf(curloc_s,"%d,%d",cur_y,cur_x);
+  sprintf(curpercent_s,"%d%%",(int)(((float)cur_y/(float)cur_lines)*100));
+  wmove(file_window,0,0);
+  wclrtoeol(file_window);
+  waddstr(file_window,filename);
+  waddstr(file_window,"  ");
+  waddstr(file_window,curloc_s);
+  waddstr(file_window,"  ");
+  waddstr(file_window,curpercent_s);
+  wmove(text_window,cur_y,cur_x);
+  wrefresh(file_window);
+  wrefresh(text_window);
+}
+
 int main(int argc, char **argv)
 {
   if (argc < 2)
@@ -96,17 +128,29 @@ int main(int argc, char **argv)
   char buffer[64] = { 0 };
   char vim_mode = 0;
   size_t len = COLS;
+  int lines_expand_threshold = 0.9 * (float) MAX_LINES_DEFAULT;
 
+  short black_white=1, white_black=2;
   initscr();
+
+  if (has_colors()) {
+    start_color();
+    use_default_colors();
+    init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
+    init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
+  }
+
   init_file();
-  if (access(output_filename, F_OK) == 0) { // read file into buffer
+  if (access(output_filename, F_OK) == 0) { // current file exists
     outputfile = fopen(output_filename, "r+");
-    for (i = 0; i < LINES; i++)
+    char* line;
+    i = -1;
+    while (getline(&line,&len,outputfile) != -1) // load file into buffer
     {
-      char* line;
-      if (getline(&line,&len,outputfile) != -1) sprintf(file[i],line);
-      else sprintf(file[i],"\0");
+      sprintf(file[++i],line);
     }
+    cur_lines = i;
+    sprintf(file[i+1],"\0"); // signify end of file
   } else {
     // file doesn't exist, create it
     outputfile = fopen(output_filename, "w+");
@@ -114,9 +158,13 @@ int main(int argc, char **argv)
   }
   logfile = open("log.txt", O_CREAT | O_TRUNC | O_RDWR, S_IWUSR | S_IRUSR);
 
-  text_window = newwin(LINES-2,COLS,0,0);
+  text_window = newwin(LINES-2,COLS,0,4);
   file_window = newwin(1,COLS,LINES-2,0);
   status_window = newwin(1,COLS,LINES-1,0);
+  numbers_window = newwin(LINES-2,4,0,0);
+  wattrset(file_window,COLOR_PAIR(black_white));
+  wrefresh(file_window);
+
   register_signal_handler();
   cbreak();
   scrollok(stdscr,true);
@@ -124,11 +172,12 @@ int main(int argc, char **argv)
   {
     mvwaddstr(text_window,i,0,file[i]);
   }
-  waddstr(file_window,"File");
-  waddstr(status_window,"Status");
+  draw_numbers();
+  draw_filename(output_filename);
   wmove(text_window,0,0);
   wrefresh(text_window);
   wrefresh(file_window);
+  wrefresh(numbers_window);
   wrefresh(status_window);
 
   socklen_t peer_addr_size;
@@ -176,7 +225,7 @@ int main(int argc, char **argv)
       perror("listen");
       exit(EXIT_FAILURE);
   }
-  sprintf(output_buffer,"vomitbucket server. press ctrl-c to stop it running...", PORT);
+  sprintf(output_buffer,"vimbucket server. press ctrl-c to stop it running...", PORT);
   write_buffer_to_output(output_buffer);
   int addrlen = sizeof(address);
 
@@ -288,22 +337,24 @@ int main(int argc, char **argv)
                   write_buffer_to_output();
                   break;
                 case 'j':
-                  if (cur_y == LINES-3)
+                  if (cur_y < cur_lines)
                   {
-                    wscrl(text_window,1);
+                    if (cur_y == LINES-3)
+                    {
+                      wscrl(text_window,1);
+                    }
+                    cur_y++;
+                    sprintf(output_buffer,"Y:%d!",cur_y);
+                    write_buffer_to_output();
                   }
-                  cur_y++;
-                  sprintf(output_buffer,"Y:%d!",cur_y);
-                  write_buffer_to_output();
                   break;
                 case 'k':
-                  if (cur_y == 0) 
+                  if (cur_y > 0)
                   {
-                    wscrl(text_window,-1); 
+                    cur_y--;
+                    sprintf(output_buffer,"Y:%d!",cur_y);
+                    write_buffer_to_output();
                   }
-                  cur_y--;
-                  sprintf(output_buffer,"Y:%d!",cur_y);
-                  write_buffer_to_output();
                   break;
                 case 'l':
                   if (cur_x!=COLS-1) cur_x++;
@@ -336,9 +387,10 @@ int main(int argc, char **argv)
                 write_buffer_to_output();
               }
             }
-            //addch(input);
+            draw_filename(output_filename);
             wrefresh(status_window);
             wrefresh(file_window);
+            wrefresh(numbers_window);
             wrefresh(text_window);
             char response[64] = { 0 };
             sprintf(response,"vomitbucket accepted your input: %s",message);
