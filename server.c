@@ -23,11 +23,12 @@ int master_socket, logfile;
 FILE *outputfile;
 char output_buffer[64]; // for output messages
 int cur_y,cur_x, i;
-int cur_lines = 0;
+int cur_lines = 1;
 WINDOW *text_window,*file_window,*status_window,*numbers_window;
 struct VimLine** file;
 char* output_filename;
 short black_white=1, white_clear=2, yellow_clear=3, blue_clear=4; //colors
+size_t len;
 
 void init_file()
 {
@@ -50,6 +51,25 @@ void write_file()
   }
   free(file);
   fclose(outputfile);
+}
+
+void read_file_into_buffer()
+{
+  if (access(output_filename, F_OK) == 0) { // current file exists
+    outputfile = fopen(output_filename, "r+");
+    char* line;
+    i = -1;
+    while (getline(&line,&len,outputfile) != -1) // load file into buffer
+    {
+      setVimLine(file[++i],line);
+    }
+    cur_lines = i+1;
+    setVimLine(file[i+1],"\0"); // signify end of file
+  } else {
+    // file doesn't exist, create it
+    outputfile = fopen(output_filename, "w+");
+    setVimLine(file[0],"New file. Edit it!");
+  }
 }
 
 void sig_handler(int signo)
@@ -86,9 +106,9 @@ void draw_numbers()
 {
   wattron(numbers_window,COLOR_PAIR(yellow_clear));
   char number[4];
-  for (i = 0; i <= cur_lines; i++)
+  for (i = 0; i < cur_lines; i++)
   {
-    sprintf(number,"%d",i);
+    sprintf(number,"%d",i+1);
     wmove(numbers_window,i,0);
     waddstr(numbers_window,number);
   }
@@ -135,7 +155,7 @@ int main(int argc, char **argv)
   int max_sd;
   char buffer[64] = { 0 };
   char vim_mode = 0;
-  size_t len = COLS;
+  len = COLS;
   int lines_expand_threshold = 0.9 * (float) MAX_LINES_DEFAULT;
 
   initscr();
@@ -150,24 +170,10 @@ int main(int argc, char **argv)
   }
 
   init_file();
-  if (access(output_filename, F_OK) == 0) { // current file exists
-    outputfile = fopen(output_filename, "r+");
-    char* line;
-    i = -1;
-    while (getline(&line,&len,outputfile) != -1) // load file into buffer
-    {
-      setVimLine(file[++i],line);
-    }
-    cur_lines = i;
-    setVimLine(file[i+1],"\0"); // signify end of file
-  } else {
-    // file doesn't exist, create it
-    outputfile = fopen(output_filename, "w+");
-    setVimLine(file[0],"New file. Edit it!");
-  }
+  read_file_into_buffer();
   logfile = open("log.txt", O_CREAT | O_TRUNC | O_RDWR, S_IWUSR | S_IRUSR);
 
-  text_window = newwin(LINES-2,COLS,0,4);
+  text_window = newwin(LINES-2,COLS-4,0,4);
   file_window = newwin(1,COLS,LINES-2,0);
   status_window = newwin(1,COLS,LINES-1,0);
   numbers_window = newwin(LINES-2,4,0,0);
@@ -193,7 +199,7 @@ int main(int argc, char **argv)
 
   fd_set readfds;
 
-  char *message = "Welcome to Vomitbucket, v1.0";
+  char *message = "Welcome to Vimbucket, v1.0";
 
   // initialise all client_socket[] to 0
   for (i = 0; i < max_clients; i++)  
@@ -285,8 +291,6 @@ int main(int argc, char **argv)
           perror("send");  
       }
 
-      dprintf(logfile,"Welcome message sent successfully\n");
-
       // add new socket to array of clients
       for (i=0; i < max_clients; i++)
       {
@@ -345,7 +349,7 @@ int main(int argc, char **argv)
                   write_buffer_to_output();
                   break;
                 case 'j':
-                  if (cur_y < cur_lines)
+                  if (cur_y < cur_lines-1)
                   {
                     if (cur_y == LINES-3)
                     {
@@ -380,6 +384,16 @@ int main(int argc, char **argv)
                   sprintf(output_buffer,"Switched to Insert Mode!");
                   write_buffer_to_output();
                   break;
+                case '$':
+                  cur_x = getEndIndex(file[cur_y]);
+                  sprintf(output_buffer,"Moved To End Of Line %d!",cur_y);
+                  write_buffer_to_output();
+                  break;
+                case '0':
+                  cur_x = 0;
+                  sprintf(output_buffer,"Moved To Start Of Line %d!",cur_y);
+                  write_buffer_to_output();
+                  break;
               }
             } else if (vim_mode == 1) {
               if (input == 27)
@@ -395,6 +409,7 @@ int main(int argc, char **argv)
                 write_buffer_to_output();
               }
             }
+            draw_numbers();
             draw_filename(output_filename);
             wrefresh(status_window);
             wrefresh(file_window);

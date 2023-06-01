@@ -15,8 +15,8 @@ int setVimLine(struct VimLine *line, char *str)
 {
   sprintf(line->line, str); 
   int len = strlen(str);
-  if (len >= MAX_COLS_DEFAULT) len = MAX_COLS_DEFAULT;
-  line->end_index = len;
+  if (len >= MAX_LINELENGTH_DEFAULT) len = MAX_LINELENGTH_DEFAULT; // trim long lines
+  line->end_index = len-1;
   return 0;
 }
 
@@ -35,11 +35,16 @@ void addChar(struct VimLine *target, int index, char ch)
   if (index > target->end_index)
   {
     int i;
-    for(i = target->end_index;i < index && i < MAX_COLS_DEFAULT; i++)
+    for(i = target->end_index;i < index && i < MAX_LINELENGTH_DEFAULT; i++)
     {
       target->line[i] = ' ';
     }
     target->end_index = i;
   }
   target->line[index] = ch;
+}
+
+int getEndIndex(struct VimLine *target)
+{
+  return target->end_index;
 }

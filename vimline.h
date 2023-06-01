@@ -1,10 +1,10 @@
 #ifndef VIMLINE_H
 #define VIMLINE_H
 
-#define MAX_COLS_DEFAULT 200
+#define MAX_LINELENGTH_DEFAULT 200
 
 struct VimLine {
-  char line[MAX_COLS_DEFAULT];
+  char line[MAX_LINELENGTH_DEFAULT];
   int end_index;
 };
 
@@ -14,5 +14,7 @@ char* getVimLine(struct VimLine *line);
 
 void delVimLine(struct VimLine *target);
 void addChar(struct VimLine *target, int index, char ch);
+
+int getEndIndex(struct VimLine *target);
 
 #endif
