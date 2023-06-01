@@ -4,13 +4,14 @@
 #define MAX_LINELENGTH_DEFAULT 200
 
 struct VimLine {
-  char line[MAX_LINELENGTH_DEFAULT];
+  char content[MAX_LINELENGTH_DEFAULT];
   int end_index;
 };
 
-struct VimLine* newVimLine(char *str);
+struct VimLine *initEmptyVimLine();
+struct VimLine *newVimLine(char *str);
 int setVimLine(struct VimLine *line, char *str);
-char* getVimLine(struct VimLine *line);
+char *getVimLine(struct VimLine *line);
 
 void delVimLine(struct VimLine *target);
 void addChar(struct VimLine *target, int index, char ch);

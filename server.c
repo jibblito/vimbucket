@@ -22,7 +22,8 @@ int server_running = 1;
 int master_socket, logfile;
 FILE *outputfile;
 char output_buffer[64]; // for output messages
-int cur_y,cur_x, i;
+int cur_y,cur_x, scroll_head = 0;
+int i;
 int cur_lines = 1;
 WINDOW *text_window,*file_window,*status_window,*numbers_window;
 struct VimLine** file;
@@ -33,20 +34,19 @@ size_t len;
 void init_file()
 {
   file = malloc(sizeof(struct VimLine) * MAX_LINES_DEFAULT);
-  for (i = 0; i < MAX_LINES_DEFAULT; i++)
-  {
-    file[i] = newVimLine("");
-  }
 }
 
 void write_file()
 {
   ftruncate(fileno(outputfile),2);
   rewind(outputfile);
-  for (i = 0; i < LINES; i++)
+  for (i = 0; i < cur_lines; ++i)
   {
-    fprintf(outputfile,getVimLine(file[i]));
-    dprintf(logfile,"Writing line %d to outputfile!\n",i);
+    if (file[i]->end_index!=-1)
+    {
+      fprintf(outputfile,"%s\n",getVimLine(file[i]));
+      dprintf(logfile,"Writing line %d (content: `%s`)!\n",i,getVimLine(file[i]));
+    }
     free(file[i]);
   }
   free(file);
@@ -58,17 +58,17 @@ void read_file_into_buffer()
   if (access(output_filename, F_OK) == 0) { // current file exists
     outputfile = fopen(output_filename, "r+");
     char* line;
-    i = -1;
+    i = 0;
     while (getline(&line,&len,outputfile) != -1) // load file into buffer
     {
-      setVimLine(file[++i],line);
+      file[i] = newVimLine(line);
+      i++;
     }
-    cur_lines = i+1;
-    setVimLine(file[i+1],"\0"); // signify end of file
+    cur_lines = i;
   } else {
     // file doesn't exist, create it
     outputfile = fopen(output_filename, "w+");
-    setVimLine(file[0],"New file. Edit it!");
+    file[0] = newVimLine("New file. Edit it!\n");
   }
 }
 
@@ -102,13 +102,26 @@ void write_buffer_to_output()
   wrefresh(text_window);
 }
 
+void draw_text()
+{
+  werase(text_window);
+  for (i = 0; i < cur_lines - scroll_head && i < LINES-3; i++)
+  {
+    wmove(text_window,i,0);
+    waddstr(text_window,file[i+scroll_head]->content);
+  }
+  wmove(text_window,cur_y,cur_x);
+  wrefresh(text_window);
+}
+
 void draw_numbers()
 {
+  werase(numbers_window);
   wattron(numbers_window,COLOR_PAIR(yellow_clear));
   char number[4];
-  for (i = 0; i < cur_lines; i++)
+  for (i = 0; i < cur_lines - scroll_head && i < LINES-3; i++)
   {
-    sprintf(number,"%d",i+1);
+    sprintf(number,"%d",i+scroll_head+1);
     wmove(numbers_window,i,0);
     waddstr(numbers_window,number);
   }
@@ -125,6 +138,7 @@ void draw_numbers()
 
 void draw_filename(char* filename)
 {
+  werase(file_window);
   char curloc_s[20], curpercent_s[4];
   sprintf(curloc_s,"%d,%d",cur_y,cur_x);
   sprintf(curpercent_s,"%d%%",(int)(((float)cur_y/(float)cur_lines)*100));
@@ -353,7 +367,7 @@ int main(int argc, char **argv)
                   {
                     if (cur_y == LINES-3)
                     {
-                      wscrl(text_window,1);
+                      scroll_head+=1;
                     }
                     cur_y++;
                     sprintf(output_buffer,"Y:%d!",cur_y);
@@ -361,9 +375,12 @@ int main(int argc, char **argv)
                   }
                   break;
                 case 'k':
-                  if (cur_y > 0)
+                  if (cur_y >= 0)
                   {
-                    cur_y--;
+                    if (cur_y == 0)
+                    {
+                      if (scroll_head != 0) scroll_head-=1;
+                    } else cur_y--;
                     sprintf(output_buffer,"Y:%d!",cur_y);
                     write_buffer_to_output();
                   }
@@ -394,9 +411,23 @@ int main(int argc, char **argv)
                   sprintf(output_buffer,"Moved To Start Of Line %d!",cur_y);
                   write_buffer_to_output();
                   break;
+                case 5:
+                  if (scroll_head != cur_lines-1){
+                    scroll_head+=1;
+                  }
+                  sprintf(output_buffer,"Window down!");
+                  write_buffer_to_output();
+                  break;
+                case 25:
+                  if (scroll_head !=0) {
+                    scroll_head-=1;
+                  }
+                  sprintf(output_buffer,"Window up!");
+                  write_buffer_to_output();
+                  break;
               }
             } else if (vim_mode == 1) {
-              if (input == 27)
+              if (input == 27) // escape
               {
                 vim_mode = 0;
                 sprintf(output_buffer,"Switched to Move Mode!");
@@ -404,11 +435,22 @@ int main(int argc, char **argv)
               } else {
                 waddch(text_window,input);
                 getyx(text_window,cur_y,cur_x);
-                addChar(file[cur_y],cur_x-1,input);
+                if (input == 10) // enter
+                {
+                  if (cur_lines == cur_y)
+                  {
+                    file[cur_y + scroll_head] = newVimLine("\n");
+                  } else {
+                    file[cur_lines] = newVimLine(file[cur_y]->content);
+                    setVimLine(file[cur_y + scroll_head],"\n");
+                  }
+                  cur_lines++;
+                } else addChar(file[cur_y + scroll_head],cur_x-1,input);
                 sprintf(output_buffer,"Char written: %d!", input);
                 write_buffer_to_output();
               }
             }
+            draw_text();
             draw_numbers();
             draw_filename(output_filename);
             wrefresh(status_window);
