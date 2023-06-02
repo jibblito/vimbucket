@@ -51,9 +51,9 @@ void addChar(struct VimLine *target, int index, char ch)
   if (index > target->end_index)
   {
     int i;
-    for(i = target->end_index;i < index && i < MAX_LINELENGTH_DEFAULT; i++)
+    for(i = target->end_index+1;i < index && i < MAX_LINELENGTH_DEFAULT; i++)
     {
-      target->content[i] = ' ';
+      target->content[i] = ' '; // Fill in those blanks, baby
     }
     target->end_index = i;
   }
