@@ -458,7 +458,7 @@ int main(int argc, char **argv)
             wrefresh(numbers_window);
             wrefresh(text_window);
             char response[64] = { 0 };
-            sprintf(response,"vomitbucket accepted your input: %s",message);
+            sprintf(response,"vimbucket accepted your input: %s",message);
             send(sd, response, 64, 0);
             memset(buffer,'\0',sizeof(buffer));
         }
