@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <curses.h>
 #define PORT 25565
-  
+
 int main(int argc, char const* argv[])
 {
   initscr();

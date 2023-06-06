@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include "vimline.h"
+#include "screen.h"
 
 #define TRUE 1
 #define FALSE 0
@@ -102,18 +103,6 @@ void write_buffer_to_output()
   wrefresh(text_window);
 }
 
-void draw_text()
-{
-  werase(text_window);
-  for (i = 0; i < cur_lines - scroll_head && i < LINES-3; i++)
-  {
-    wmove(text_window,i,0);
-    waddstr(text_window,file[i+scroll_head]->content);
-  }
-  wmove(text_window,cur_y,cur_x);
-  wrefresh(text_window);
-}
-
 void draw_numbers()
 {
   werase(numbers_window);
@@ -133,24 +122,6 @@ void draw_numbers()
   }
   wmove(text_window,cur_y,cur_x);
   wrefresh(numbers_window);
-  wrefresh(text_window);
-}
-
-void draw_filename(char* filename)
-{
-  werase(file_window);
-  char curloc_s[20], curpercent_s[4];
-  sprintf(curloc_s,"%d,%d",cur_y,cur_x);
-  sprintf(curpercent_s,"%d%%",(int)(((float)cur_y/(float)cur_lines)*100));
-  wmove(file_window,0,0);
-  wclrtoeol(file_window);
-  waddstr(file_window,filename);
-  waddstr(file_window,"  ");
-  waddstr(file_window,curloc_s);
-  waddstr(file_window,"  ");
-  waddstr(file_window,curpercent_s);
-  wmove(text_window,cur_y,cur_x);
-  wrefresh(file_window);
   wrefresh(text_window);
 }
 
@@ -201,7 +172,7 @@ int main(int argc, char **argv)
     mvwaddstr(text_window,i,0,getVimLine(file[i]));
   }
   draw_numbers();
-  draw_filename(output_filename);
+  draw_statusbar(file_window,output_filename, cur_y, cur_x, cur_lines);
   wmove(text_window,0,0);
   wrefresh(text_window);
   wrefresh(file_window);
@@ -450,9 +421,9 @@ int main(int argc, char **argv)
                 write_buffer_to_output();
               }
             }
-            draw_text();
+            draw_text_window(text_window, file, scroll_head, cur_lines, LINES);
+            draw_statusbar(file_window, "NEGRO", cur_y, cur_x, cur_lines);
             draw_numbers();
-            draw_filename(output_filename);
             wrefresh(status_window);
             wrefresh(file_window);
             wrefresh(numbers_window);
