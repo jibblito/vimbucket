@@ -26,10 +26,9 @@ char output_buffer[64]; // for output messages
 int cur_y,cur_x, scroll_head = 0;
 int i;
 int cur_lines = 1;
-WINDOW *text_window,*file_window,*status_window,*numbers_window;
+WINDOW *text_window,*file_window,*output_window,*numbers_window;
 struct VimLine** file;
 char* output_filename;
-short black_white=1, white_clear=2, yellow_clear=3, blue_clear=4; //colors
 size_t len;
 
 void init_file()
@@ -92,39 +91,6 @@ void register_signal_handler()
 	  printf("\ncan't catch SIGINT\n");
 }
 
-
-void write_buffer_to_output()
-{
-  wmove(status_window,0,0);
-  wclrtoeol(status_window);
-  waddstr(status_window,output_buffer);
-  wmove(text_window,cur_y,cur_x); // current y and x set before calling w_b_t_o()
-  wrefresh(status_window);
-  wrefresh(text_window);
-}
-
-void draw_numbers()
-{
-  werase(numbers_window);
-  wattron(numbers_window,COLOR_PAIR(yellow_clear));
-  char number[4];
-  for (i = 0; i < cur_lines - scroll_head && i < LINES-3; i++)
-  {
-    sprintf(number,"%d",i+scroll_head+1);
-    wmove(numbers_window,i,0);
-    waddstr(numbers_window,number);
-  }
-  wattron(numbers_window,COLOR_PAIR(blue_clear));
-  for (; i <= LINES-3; i++)
-  {
-    wmove(numbers_window,i,0);
-    waddstr(numbers_window,"~");
-  }
-  wmove(text_window,cur_y,cur_x);
-  wrefresh(numbers_window);
-  wrefresh(text_window);
-}
-
 int main(int argc, char **argv)
 {
   if (argc < 2)
@@ -144,15 +110,7 @@ int main(int argc, char **argv)
   int lines_expand_threshold = 0.9 * (float) MAX_LINES_DEFAULT;
 
   initscr();
-
-  if (has_colors()) {
-    start_color();
-    use_default_colors();
-    init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
-    init_pair(white_clear, COLOR_WHITE, -1);
-    init_pair(yellow_clear, COLOR_YELLOW, -1);
-    init_pair(blue_clear, COLOR_BLUE, -1);
-  }
+  initialize_colors(); // screen.c
 
   init_file();
   read_file_into_buffer();
@@ -160,24 +118,12 @@ int main(int argc, char **argv)
 
   text_window = newwin(LINES-2,COLS-4,0,4);
   file_window = newwin(1,COLS,LINES-2,0);
-  status_window = newwin(1,COLS,LINES-1,0);
+  output_window = newwin(1,COLS,LINES-1,0);
   numbers_window = newwin(LINES-2,4,0,0);
-  wattrset(file_window,COLOR_PAIR(black_white));
+//  wattrset(file_window,COLOR_PAIR(black_white)); // ARCHAIC - move to screen.c
 
   register_signal_handler();
   cbreak();
-  scrollok(stdscr,true);
-  for (i = 0; i < LINES-2; i++)
-  {
-    mvwaddstr(text_window,i,0,getVimLine(file[i]));
-  }
-  draw_numbers();
-  draw_statusbar(file_window,output_filename, cur_y, cur_x, cur_lines);
-  wmove(text_window,0,0);
-  wrefresh(text_window);
-  wrefresh(file_window);
-  wrefresh(numbers_window);
-  wrefresh(status_window);
 
   socklen_t peer_addr_size;
   struct sockaddr_in address;
@@ -224,8 +170,19 @@ int main(int argc, char **argv)
       perror("listen");
       exit(EXIT_FAILURE);
   }
+
   sprintf(output_buffer,"vimbucket server. press ctrl-c to stop it running...", PORT);
-  write_buffer_to_output(output_buffer);
+
+  update_output_window(output_window,output_buffer);
+  draw_numbers_window(numbers_window, scroll_head, cur_lines, LINES-3);
+  draw_statusbar(file_window,output_filename, cur_y, cur_x, cur_lines);
+  draw_text_window(text_window, file, scroll_head, cur_lines, LINES-3);
+  wmove(text_window,0,0);
+
+  wrefresh(output_window);
+  wrefresh(file_window);
+  wrefresh(numbers_window);
+  wrefresh(text_window);
   int addrlen = sizeof(address);
 
   for (;;)
@@ -284,7 +241,10 @@ int main(int argc, char **argv)
           client_socket[i] = new_socket;
           dprintf(logfile,"Adding to list of sockets as number %d!\n",i);
           sprintf(output_buffer,"Client %d has joined!\0nig",i);
-          write_buffer_to_output();
+          update_output_window(output_window,output_buffer);
+          wmove(text_window,cur_y,cur_x);
+          wrefresh(output_window);
+          wrefresh(text_window);
           break;
         }
       }
@@ -313,7 +273,8 @@ int main(int argc, char **argv)
             if (valread == -1)
             { 
               sprintf(output_buffer,"Client %d has left: %s\0",i,strerror(errno));
-              write_buffer_to_output();
+              update_output_window(output_window,output_buffer);
+              wmove(text_window,0,0);
               continue;
             }
             // Extract tokens from message
@@ -331,7 +292,7 @@ int main(int argc, char **argv)
                 case 'h':
                   if (cur_x!=0) cur_x--;
                   sprintf(output_buffer,"X:%d!",cur_x);
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case 'j':
                   if (cur_y < cur_lines-1)
@@ -342,7 +303,7 @@ int main(int argc, char **argv)
                     }
                     cur_y++;
                     sprintf(output_buffer,"Y:%d!",cur_y);
-                    write_buffer_to_output();
+                    update_output_window(output_window,output_buffer);
                   }
                   break;
                 case 'k':
@@ -353,48 +314,48 @@ int main(int argc, char **argv)
                       if (scroll_head != 0) scroll_head-=1;
                     } else cur_y--;
                     sprintf(output_buffer,"Y:%d!",cur_y);
-                    write_buffer_to_output();
+                    update_output_window(output_window,output_buffer);
                   }
                   break;
                 case 'l':
                   if (cur_x!=COLS-1) cur_x++;
                   sprintf(output_buffer,"X:%d!",cur_x);
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case 'i':
                   vim_mode = 1;
                   sprintf(output_buffer,"Switched to Insert Mode!");
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case 'a':
                   vim_mode = 1;
                   cur_x++;
                   sprintf(output_buffer,"Switched to Insert Mode!");
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case '$':
                   cur_x = getEndIndex(file[cur_y]);
                   sprintf(output_buffer,"Moved To End Of Line %d!",cur_y);
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case '0':
                   cur_x = 0;
                   sprintf(output_buffer,"Moved To Start Of Line %d!",cur_y);
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case 5:
                   if (scroll_head != cur_lines-1){
                     scroll_head+=1;
                   }
                   sprintf(output_buffer,"Window down!");
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
                 case 25:
                   if (scroll_head !=0) {
                     scroll_head-=1;
                   }
                   sprintf(output_buffer,"Window up!");
-                  write_buffer_to_output();
+                  update_output_window(output_window,output_buffer);
                   break;
               }
             } else if (vim_mode == 1) {
@@ -402,7 +363,7 @@ int main(int argc, char **argv)
               {
                 vim_mode = 0;
                 sprintf(output_buffer,"Switched to Move Mode!");
-                write_buffer_to_output();
+                update_output_window(output_window,output_buffer);
               } else {
                 waddch(text_window,input);
                 getyx(text_window,cur_y,cur_x);
@@ -418,16 +379,19 @@ int main(int argc, char **argv)
                   cur_lines++;
                 } else addChar(file[cur_y + scroll_head],cur_x-1,input);
                 sprintf(output_buffer,"Char written: %d!", input);
-                write_buffer_to_output();
+                update_output_window(output_window,output_buffer);
               }
             }
-            draw_text_window(text_window, file, scroll_head, cur_lines, LINES);
-            draw_statusbar(file_window, "NEGRO", cur_y, cur_x, cur_lines);
-            draw_numbers();
-            wrefresh(status_window);
+
+            draw_text_window(text_window, file, scroll_head, cur_lines, LINES-3);
+            draw_statusbar(file_window, output_filename, cur_y, cur_x, cur_lines);
+            draw_numbers_window(numbers_window, scroll_head, cur_lines, LINES-3);
+            wmove(text_window,cur_y,cur_x);
+            wrefresh(output_window);
             wrefresh(file_window);
             wrefresh(numbers_window);
             wrefresh(text_window);
+
             char response[64] = { 0 };
             sprintf(response,"vimbucket accepted your input: %s",message);
             send(sd, response, 64, 0);
