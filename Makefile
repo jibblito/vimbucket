@@ -4,7 +4,7 @@ server: server.c screen vimline
 	gcc server.c vimline.o screen.o -lncurses -g -o server
 
 client: client.c
-	gcc client.c -g -lncurses -o client
+	gcc client.c vimline.o screen.o -lncurses -g -o client
 
 screen: screen.c
 	gcc screen.c -g -c -lncurses -o screen.o

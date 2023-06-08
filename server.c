@@ -23,6 +23,7 @@ int server_running = 1;
 int master_socket, logfile;
 FILE *outputfile;
 char output_buffer[64]; // for output messages
+char network_buffer[1024]; // for outgoing network packets
 int cur_y,cur_x, scroll_head = 0;
 int i;
 int cur_lines = 1;
@@ -130,7 +131,6 @@ int main(int argc, char **argv)
 
   fd_set readfds;
 
-  char *message = "Welcome to Vimbucket, v1.0";
 
   // initialise all client_socket[] to 0
   for (i = 0; i < max_clients; i++)  
@@ -227,8 +227,8 @@ int main(int argc, char **argv)
           new_socket, inet_ntoa(address.sin_addr), ntohs
           (address.sin_port));  
 
-
-      if(send(new_socket, message, strlen(message), 0) != strlen(message) )  
+      sprintf(network_buffer, "Welcome to Vimbucket, v1.0!\0");
+      if(send(new_socket, network_buffer, sizeof(network_buffer),0) != sizeof(network_buffer))  
       {  
           perror("send");  
       }
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
         {
           client_socket[i] = new_socket;
           dprintf(logfile,"Adding to list of sockets as number %d!\n",i);
-          sprintf(output_buffer,"Client %d has joined!\0nig",i);
+          sprintf(output_buffer,"Client %d has joined!",i);
           update_output_window(output_window,output_buffer);
           wmove(text_window,cur_y,cur_x);
           wrefresh(output_window);
@@ -248,6 +248,23 @@ int main(int argc, char **argv)
           break;
         }
       }
+
+      // Send current file info to the client!
+      sprintf(output_buffer,"Sending %d chunks to new client!!",cur_lines);
+      update_output_window(output_window,output_buffer);
+      for (i = 0; i < cur_lines; i++)
+      {
+        if (send(new_socket,file[i],sizeof(struct VimLine), 0) != sizeof(struct VimLine))
+        {
+          perror("File Send to Client");
+        }
+      }
+      struct VimLine *terminate = initEmptyVimLine();
+      sprintf(terminate->content,"Terminado, bro!");
+      send(new_socket,terminate,sizeof(struct VimLine), 0);
+      sprintf(output_buffer,"All %d chunks sent to new client!!",i);
+      update_output_window(output_window,output_buffer);
+      wrefresh(output_window);
     }
     // check all slave sockets for char input
     for (i = 0; i < max_clients; i++)
@@ -269,7 +286,7 @@ int main(int argc, char **argv)
             //Close the socket and mark as 0 in list for reuse 
             close( sd );  
             client_socket[i] = 0;  
-        } else {  
+        } else {
             if (valread == -1)
             { 
               sprintf(output_buffer,"Client %d has left: %s\0",i,strerror(errno));
@@ -292,7 +309,6 @@ int main(int argc, char **argv)
                 case 'h':
                   if (cur_x!=0) cur_x--;
                   sprintf(output_buffer,"X:%d!",cur_x);
-                  update_output_window(output_window,output_buffer);
                   break;
                 case 'j':
                   if (cur_y < cur_lines-1)
@@ -303,7 +319,6 @@ int main(int argc, char **argv)
                     }
                     cur_y++;
                     sprintf(output_buffer,"Y:%d!",cur_y);
-                    update_output_window(output_window,output_buffer);
                   }
                   break;
                 case 'k':
@@ -314,48 +329,40 @@ int main(int argc, char **argv)
                       if (scroll_head != 0) scroll_head-=1;
                     } else cur_y--;
                     sprintf(output_buffer,"Y:%d!",cur_y);
-                    update_output_window(output_window,output_buffer);
                   }
                   break;
                 case 'l':
                   if (cur_x!=COLS-1) cur_x++;
                   sprintf(output_buffer,"X:%d!",cur_x);
-                  update_output_window(output_window,output_buffer);
                   break;
                 case 'i':
                   vim_mode = 1;
                   sprintf(output_buffer,"Switched to Insert Mode!");
-                  update_output_window(output_window,output_buffer);
                   break;
                 case 'a':
                   vim_mode = 1;
                   cur_x++;
                   sprintf(output_buffer,"Switched to Insert Mode!");
-                  update_output_window(output_window,output_buffer);
                   break;
                 case '$':
                   cur_x = getEndIndex(file[cur_y]);
                   sprintf(output_buffer,"Moved To End Of Line %d!",cur_y);
-                  update_output_window(output_window,output_buffer);
                   break;
                 case '0':
                   cur_x = 0;
                   sprintf(output_buffer,"Moved To Start Of Line %d!",cur_y);
-                  update_output_window(output_window,output_buffer);
                   break;
                 case 5:
                   if (scroll_head != cur_lines-1){
                     scroll_head+=1;
                   }
                   sprintf(output_buffer,"Window down!");
-                  update_output_window(output_window,output_buffer);
                   break;
                 case 25:
                   if (scroll_head !=0) {
                     scroll_head-=1;
                   }
                   sprintf(output_buffer,"Window up!");
-                  update_output_window(output_window,output_buffer);
                   break;
               }
             } else if (vim_mode == 1) {
@@ -363,7 +370,6 @@ int main(int argc, char **argv)
               {
                 vim_mode = 0;
                 sprintf(output_buffer,"Switched to Move Mode!");
-                update_output_window(output_window,output_buffer);
               } else {
                 waddch(text_window,input);
                 getyx(text_window,cur_y,cur_x);
@@ -379,10 +385,10 @@ int main(int argc, char **argv)
                   cur_lines++;
                 } else addChar(file[cur_y + scroll_head],cur_x-1,input);
                 sprintf(output_buffer,"Char written: %d!", input);
-                update_output_window(output_window,output_buffer);
               }
             }
 
+            update_output_window(output_window,output_buffer);
             draw_text_window(text_window, file, scroll_head, cur_lines, LINES-3);
             draw_statusbar(file_window, output_filename, cur_y, cur_x, cur_lines);
             draw_numbers_window(numbers_window, scroll_head, cur_lines, LINES-3);
