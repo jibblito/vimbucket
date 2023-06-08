@@ -15,6 +15,7 @@
 struct VimLine** file;
 int i;
 char status_msg[128] = { 0 };
+WINDOW *text_window,*file_window,*output_window,*numbers_window;
 
 void init_file()
 {
@@ -31,6 +32,12 @@ int main(int argc, char const* argv[])
   char input[16] = { 0 };
   char message[64] = { 0 };
   char network_buffer[1024] = { 0 };
+
+  text_window = newwin(LINES-2,COLS-4,0,4);
+  file_window = newwin(1,COLS,LINES-2,0);
+  output_window = newwin(1,COLS,LINES-1,0);
+  numbers_window = newwin(LINES-2,4,0,0);
+
 
   if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     printf("\n Socket creation error \n");
@@ -59,8 +66,8 @@ int main(int argc, char const* argv[])
 
   valread = read(client_fd, network_buffer, sizeof(network_buffer));
   snprintf(status_msg, sizeof(status_msg),"Reading file... server says: %s",network_buffer);
-  update_output_window(stdscr,status_msg);
-  refresh();
+  update_output_window(output_window,status_msg);
+  wrefresh(output_window);
 
   init_file();
 
@@ -74,20 +81,44 @@ int main(int argc, char const* argv[])
       i++;
     } else break;
   }
+  int cur_lines = i;
   free(lineBuffer);
   sprintf(status_msg,"Done reading file... %d lines!", i);
-  update_output_window(stdscr,status_msg);
-  refresh();
+
+  int cur_y = 0;
+  int cur_x = 0;
+  int scroll_head = 0;
+  update_output_window(output_window,status_msg);
+  draw_numbers_window(numbers_window, scroll_head, cur_lines, LINES-3);
+  draw_statusbar(file_window,"output filename", cur_y, cur_x, cur_lines);
+  draw_text_window(text_window, file, scroll_head, cur_lines, LINES-3);
+  wmove(text_window,0,0);
+
+  wrefresh(output_window);
+  wrefresh(file_window);
+  wrefresh(numbers_window);
+  wrefresh(text_window);
+
 
   while(running) {
-    got = getch();
+    got = wgetch(text_window);
     sprintf(message,"Rory's Client,%c",got);
     send(client_fd, message, strlen(message), 0);
     memset(message,'\0',sizeof(message));
 
     valread = read(client_fd, network_buffer, sizeof(network_buffer));
     sprintf(status_msg,"Server says: %s", network_buffer);
-    update_output_window(stdscr,status_msg);
+
+    update_output_window(output_window,status_msg);
+    draw_numbers_window(numbers_window, scroll_head, cur_lines, LINES-3);
+    draw_statusbar(file_window,"output filename", cur_y, cur_x, cur_lines);
+    draw_text_window(text_window, file, scroll_head, cur_lines, LINES-3);
+    wmove(text_window,0,0);
+
+    wrefresh(output_window);
+    wrefresh(file_window);
+    wrefresh(numbers_window);
+    wrefresh(text_window);
     // if error do something!
   }
 
